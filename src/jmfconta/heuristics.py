@@ -46,11 +46,11 @@ REGLAS_CAJA: tuple[ReglaHeuristica, ...] = (
     ReglaHeuristica(("2 CICLO INFANTIL", "2° CICLO", "2º CICLO", "SEGUNDO CICLO INFANTIL"), "7051002", prioridad=5),
     ReglaHeuristica(("1 CICLO INFANTIL", "1° CICLO INFANTIL", "1º CICLO INFANTIL", "PRIMER CICLO INFANTIL"), "7051002", prioridad=5),
     ReglaHeuristica(("PRIMARIA", "1 CICLO PRIMARIA", "2 CICLO PRIMARIA", "3 CICLO PRIMARIA"), "7051003", prioridad=5),
-    ReglaHeuristica(("ESO", "SECUNDARIA", "EDUCACION SECUNDARIA"), "7051005", prioridad=5),
+    ReglaHeuristica(("SECUNDARIA", "EDUCACION SECUNDARIA"), "7051005", prioridad=5),
     ReglaHeuristica(("COMEDOR", "TICKET COMEDOR", "TICKETS COMEDOR"), "7053001", prioridad=5),
     ReglaHeuristica(("GUARDERIA", "GUADERIA", "AULA MATINAL", "MATINAL"), "7053007", prioridad=5),
     ReglaHeuristica(("EXTRAESCOLAR", "ACTIVIDAD EXTRAESCOLAR"), "7055000", prioridad=5),
-    ReglaHeuristica(("MATRICULA", "CUOTA", "COLEGIO", "FAMILIA", "ALUMNO", "TUTOR", "RECIBI"), "7053000", prioridad=15),
+    ReglaHeuristica(("MATRICULA", "CUOTA", "COLEGIO", "FAMILIA", "ALUMNO", "TUTOR", "RECIBI"), "7053001", prioridad=15),
 )
 
 # Banco: mas_datos (contrapartida) o, si falta, el campo movimiento
@@ -68,7 +68,7 @@ REGLAS_BANCO: tuple[ReglaHeuristica, ...] = (
 )
 
 # Fallback agresivo: si nada matchea, sign-of-importe decide.
-FALLBACK_CAJA_INGRESO = "7053000"  # SERVICIOS COMPLEMENTARIOS — cuenta genérica existente
+FALLBACK_CAJA_INGRESO = "7050001"
 FALLBACK_CAJA_GASTO = "6280001"
 FALLBACK_BANCO_INGRESO = "7053001"
 FALLBACK_BANCO_GASTO = "6280001"
@@ -87,23 +87,15 @@ def _aplicar_reglas(texto: str, reglas: tuple[ReglaHeuristica, ...]) -> str | No
 
 
 def sugerir_caja(denominacion: str, importe: float) -> str | None:
-    """Sugiere cuenta para una linea de caja. None si nada matchea (modo conservador
-    no devolveria nada en ese caso; aqui devolvemos fallback agresivo)."""
+    """Sugiere cuenta para una linea de caja. None si ningun keyword matchea."""
     if not denominacion:
         return None
-    cuenta = _aplicar_reglas(denominacion, REGLAS_CAJA)
-    if cuenta:
-        return cuenta
-    return FALLBACK_CAJA_INGRESO if importe > 0 else FALLBACK_CAJA_GASTO if importe < 0 else None
+    return _aplicar_reglas(denominacion, REGLAS_CAJA)
 
 
 def sugerir_banco(movimiento: str, mas_datos: str, importe: float) -> str | None:
-    """Sugiere cuenta para un movimiento de banco. `mas_datos` tiene prioridad sobre
-    `movimiento` (la contrapartida suele ser mas descriptiva)."""
+    """Sugiere cuenta para un movimiento de banco. None si ningun keyword matchea."""
     texto = mas_datos or movimiento or ""
     if not texto:
         return None
-    cuenta = _aplicar_reglas(texto, REGLAS_BANCO)
-    if cuenta:
-        return cuenta
-    return FALLBACK_BANCO_INGRESO if importe > 0 else FALLBACK_BANCO_GASTO if importe < 0 else None
+    return _aplicar_reglas(texto, REGLAS_BANCO)

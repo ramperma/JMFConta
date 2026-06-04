@@ -153,11 +153,9 @@ def test_init_db_migra_bd_sin_columna_cuenta_auto(tmp_path: Path):
 
 
 def test_insertar_caja_usando_cuenta_que_no_existe_no_falla_por_fk(conn: sqlite3.Connection):
-    """El test es humo: verifica que con FK activado (init_db lo hace) no podemos
-    insertar una cuenta inexistente. La heuristica SI la inserta porque las cuentas
-    ya existen en el fixture."""
+    """Sin keyword y sin Gemini configurado -> cuenta_sugerida queda None (sin fallback agresivo)."""
     lineas = [LineaCaja(date(2026, 5, 14), "CONCEPTO DESCONOCIDO", -50.0, "")]
     repository.insertar_movimientos_caja(conn, lineas)
     rows = repository.listar_movimientos_caja(conn)
-    assert rows[0]["cuenta_sugerida"] == "6280001"  # fallback agresivo por signo negativo
-    assert rows[0]["cuenta_auto"] == 1
+    assert rows[0]["cuenta_sugerida"] is None
+    assert rows[0]["cuenta_auto"] == 0

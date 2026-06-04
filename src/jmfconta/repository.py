@@ -8,9 +8,24 @@ from typing import Iterable
 
 from . import db
 from . import heuristics
+from . import ai_suggester
 from .importers.banco import LineaBanco
 from .importers.caja import LineaCaja
 from .sage.rules import AsientoGenerado, generar_desde_banco, generar_desde_caja
+
+
+# ---------- Helpers internos ----------
+
+def _cuentas_para_ai(conn: sqlite3.Connection, importe: float) -> list[tuple[str, str]]:
+    """Devuelve cuentas del plan filtradas por signo de importe para el prompt de Gemini."""
+    prefijos = ai_suggester._prefijos_por_signo(importe)
+    placeholders = ",".join("?" for _ in prefijos)
+    like_clauses = " OR ".join(f"codigo LIKE ?" for _ in prefijos)
+    rows = conn.execute(
+        f"SELECT codigo, descripcion FROM cuenta WHERE {like_clauses} ORDER BY codigo",
+        tuple(p + "%" for p in prefijos),
+    ).fetchall()
+    return [(r["codigo"], r["descripcion"]) for r in rows]
 
 
 # ---------- Plan de cuentas ----------
@@ -103,6 +118,46 @@ def eliminar_mapping(conn: sqlite3.Connection, origen: str, clave: str) -> None:
         conn.execute("DELETE FROM mapping WHERE origen = ? AND clave = ?", (origen, clave))
 
 
+# ---------- Sugerencia rápida (sin IA, para UI) ----------
+
+def sugerir_cuenta_rapida_caja(conn: sqlite3.Connection, denominacion: str, importe: float) -> str | None:
+    """Mapping + heurísticas solo. Sin Gemini. Para respuesta inmediata en UI."""
+    mapping = get_mapping(conn, "CAJA", denominacion)
+    if mapping:
+        return resolver_cuenta(conn, mapping)
+    sugerida = heuristics.sugerir_caja(denominacion, importe)
+    return resolver_cuenta(conn, sugerida)
+
+
+def cuentas_para_ai(conn: sqlite3.Connection, importe: float) -> list[tuple[str, str]]:
+    """Devuelve cuentas filtradas por signo para el prompt de Gemini."""
+    return _cuentas_para_ai(conn, importe)
+
+
+def insertar_movimiento_caja_uno(
+    conn: sqlite3.Connection,
+    fecha: str | None,
+    denominacion: str,
+    importe: float,
+    observaciones: str,
+    cuenta: str | None,
+    cuenta_auto: int = 0,
+) -> int:
+    """Inserta una sola línea de caja. Devuelve el id generado."""
+    now = datetime.now().isoformat(timespec="seconds")
+    periodo = int(fecha.split("-")[1]) if fecha else None
+    with db.transaction(conn):
+        cur = conn.execute(
+            """INSERT INTO movimiento_caja
+               (fecha, denominacion, importe, observaciones, cuenta_sugerida,
+                cuenta_auto, comentario_asiento, periodo, created_at)
+               VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (fecha, denominacion, float(importe), observaciones or "",
+             cuenta or None, cuenta_auto, denominacion, periodo, now),
+        )
+    return cur.lastrowid
+
+
 # ---------- Movimientos Caja ----------
 
 def insertar_movimientos_caja(conn: sqlite3.Connection, lineas: Iterable[LineaCaja]) -> int:
@@ -117,6 +172,12 @@ def insertar_movimientos_caja(conn: sqlite3.Connection, lineas: Iterable[LineaCa
             else:
                 sugerida = heuristics.sugerir_caja(l.denominacion, l.importe)
                 cuenta = resolver_cuenta(conn, sugerida)
+                if not cuenta:
+                    cuentas_ai = _cuentas_para_ai(conn, l.importe)
+                    sugerida_ai = ai_suggester.sugerir_con_gemini(
+                        l.denominacion, l.importe, "CAJA", cuentas_ai
+                    )
+                    cuenta = resolver_cuenta(conn, sugerida_ai)
                 auto = 1 if cuenta else 0
             conn.execute(
                 """INSERT INTO movimiento_caja
@@ -196,6 +257,13 @@ def insertar_movimientos_banco(conn: sqlite3.Connection, lineas: Iterable[LineaB
             else:
                 sugerida = heuristics.sugerir_banco(l.movimiento, l.mas_datos, l.importe)
                 cuenta = resolver_cuenta(conn, sugerida)
+                if not cuenta:
+                    texto_ai = l.mas_datos or l.movimiento
+                    cuentas_ai = _cuentas_para_ai(conn, l.importe)
+                    sugerida_ai = ai_suggester.sugerir_con_gemini(
+                        texto_ai, l.importe, "BANCO", cuentas_ai
+                    )
+                    cuenta = resolver_cuenta(conn, sugerida_ai)
                 auto = 1 if cuenta else 0
             conn.execute(
                 """INSERT INTO movimiento_banco

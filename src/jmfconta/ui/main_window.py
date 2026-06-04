@@ -6,10 +6,13 @@ import sqlite3
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont, QPalette
 from PySide6.QtWidgets import (
+    QApplication,
     QFrame,
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QMessageBox,
+    QPushButton,
     QSizePolicy,
     QTabWidget,
     QVBoxLayout,
@@ -18,6 +21,7 @@ from PySide6.QtWidgets import (
 
 from .banco_tab import BancoTab
 from .caja_tab import CajaTab
+from .config_tab import ConfigTab
 from .mappings_tab import MappingsTab
 from .plan_cuentas_tab import PlanCuentasTab
 from .pre_asientos_tab import PreAsientosTab
@@ -71,8 +75,18 @@ class MainWindow(QMainWindow):
         titles.addWidget(t1)
         titles.addWidget(t2)
 
+        btn_salir = QPushButton("✕  Salir")
+        btn_salir.setToolTip("Cerrar la aplicación")
+        btn_salir.setStyleSheet(
+            "QPushButton { color: #6b7280; border: 1px solid #d8dde3; border-radius: 6px; "
+            "padding: 6px 14px; font-size: 9pt; background: white; }"
+            "QPushButton:hover { background: #fee2e2; color: #dc2626; border-color: #fca5a5; }"
+        )
+        btn_salir.clicked.connect(self.close)
+
         hl.addWidget(logo)
         hl.addLayout(titles, 1)
+        hl.addWidget(btn_salir)
 
         # Tabs
         self.tabs = QTabWidget()
@@ -82,6 +96,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(BancoTab(self._conn), "🏦  Banco")
         self.tabs.addTab(MappingsTab(self._conn), "🔗  Mappings")
         self.tabs.addTab(PreAsientosTab(self._conn), "📤  Pre-Asientos SAGE")
+        self.tabs.addTab(ConfigTab(self._conn), "⚙️  Configuración")
 
         # Footer
         footer = QFrame()
@@ -103,3 +118,16 @@ class MainWindow(QMainWindow):
         root_layout.addWidget(footer)
 
         self.setCentralWidget(root)
+
+    def closeEvent(self, event):
+        resp = QMessageBox.question(
+            self,
+            "Salir",
+            "¿Cerrar JMFConta?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if resp == QMessageBox.StandardButton.Yes:
+            event.accept()
+        else:
+            event.ignore()

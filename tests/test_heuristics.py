@@ -40,13 +40,13 @@ def test_caja_aeat():
 
 
 def test_caja_fallback_ingreso():
-    """Sin keyword conocido pero importe positivo -> 7050001."""
-    assert heuristics.sugerir_caja("CONCEPTO RARO DESCONOCIDO", 100.0) == "7050001"
+    """Sin keyword conocido -> None (Gemini o usuario asigna)."""
+    assert heuristics.sugerir_caja("CONCEPTO RARO DESCONOCIDO", 100.0) is None
 
 
 def test_caja_fallback_gasto():
-    """Sin keyword conocido pero importe negativo -> 6280001."""
-    assert heuristics.sugerir_caja("CONCEPTO RARO DESCONOCIDO", -50.0) == "6280001"
+    """Sin keyword conocido -> None (Gemini o usuario asigna)."""
+    assert heuristics.sugerir_caja("CONCEPTO RARO DESCONOCIDO", -50.0) is None
 
 
 def test_caja_texto_vacio():
@@ -79,8 +79,8 @@ def test_banco_mas_datos_vacio_y_movimiento_vacio():
 
 
 def test_banco_fallback():
-    assert heuristics.sugerir_banco("ALGO RARO", "CONCEPTO RARO", -10.0) == "6280001"
-    assert heuristics.sugerir_banco("ALGO RARO", "CONCEPTO RARO", 10.0) == "7053001"
+    assert heuristics.sugerir_banco("ALGO RARO", "CONCEPTO RARO", -10.0) is None
+    assert heuristics.sugerir_banco("ALGO RARO", "CONCEPTO RARO", 10.0) is None
 
 
 def test_banco_prioridad_cliente_sobre_otros():

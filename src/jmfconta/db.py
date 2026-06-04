@@ -79,6 +79,11 @@ CREATE TABLE IF NOT EXISTS asiento_linea (
     FOREIGN KEY (cuenta) REFERENCES cuenta(codigo)
 );
 
+CREATE TABLE IF NOT EXISTS config (
+    clave TEXT PRIMARY KEY,
+    valor TEXT NOT NULL DEFAULT ''
+);
+
 CREATE INDEX IF NOT EXISTS idx_movcaja_fecha ON movimiento_caja(fecha);
 CREATE INDEX IF NOT EXISTS idx_movbanco_fecha ON movimiento_banco(fecha);
 CREATE INDEX IF NOT EXISTS idx_asiento_periodo ON asiento(periodo);
