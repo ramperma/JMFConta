@@ -4,6 +4,7 @@ from __future__ import annotations
 import sqlite3
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -32,6 +33,7 @@ class BancoTab(QWidget):
         super().__init__(parent)
         self._conn = conn
         self._cache_desc: dict[str, str] = {}
+        self._solo_pendientes: bool = True
         self._build()
         self._refill()
 
@@ -56,10 +58,15 @@ class BancoTab(QWidget):
         self.btn_aprender = QPushButton("Aprender mapping")
         self.btn_aprender.clicked.connect(self._aprender)
 
+        self.btn_filtro = QPushButton("Ver todos")
+        self.btn_filtro.setToolTip("Mostrar también movimientos ya exportados a SAGE")
+        self.btn_filtro.clicked.connect(self._toggle_filtro)
+
         btns_top = QHBoxLayout()
         btns_top.setSpacing(8)
         btns_top.addWidget(self.btn_importar)
         btns_top.addWidget(self.btn_vaciar)
+        btns_top.addWidget(self.btn_filtro)
         btns_top.addStretch(1)
 
         btns_mid = QHBoxLayout()
@@ -100,14 +107,20 @@ class BancoTab(QWidget):
         layout.addLayout(btns_mid)
         layout.addWidget(self.tabla, 1)
 
+    def _toggle_filtro(self):
+        self._solo_pendientes = not self._solo_pendientes
+        self.btn_filtro.setText("Solo pendientes" if not self._solo_pendientes else "Ver todos")
+        self._refill()
+
     def _refill(self):
-        rows = repository.listar_movimientos_banco(self._conn)
+        rows = repository.listar_movimientos_banco(self._conn, solo_pendientes=self._solo_pendientes)
         self._precarga_desc_cache()
         self.tabla.blockSignals(True)
         self.tabla.setRowCount(len(rows))
         ingresos = 0.0
         gastos = 0.0
         for r, row in enumerate(rows):
+            exportado = bool(row["exported_at"])
             if row["importe"] > 0:
                 ingresos += row["importe"]
             else:
@@ -125,9 +138,22 @@ class BancoTab(QWidget):
                        self._cache_desc.get(row["cuenta_sugerida"] or ""),
                        auto=bool(row["cuenta_auto"]))
             set_text(self._cell(r, COL_COMENT), row["comentario_asiento"] or "")
+
+            if exportado:
+                _gris = QColor("#9ca3af")
+                for col in range(self.tabla.columnCount()):
+                    item = self.tabla.item(r, col)
+                    if item:
+                        item.setForeground(_gris)
+
         self.tabla.blockSignals(False)
+        n_export = self._conn.execute(
+            "SELECT COUNT(*) FROM movimiento_banco WHERE exported_at IS NOT NULL"
+        ).fetchone()[0]
+        export_txt = f"  ·  {n_export} exportados" if n_export else ""
         self.lbl_resumen.setText(
-            f"{len(rows)} movimientos  ·  ingresos {ingresos:,.2f} €  ·  gastos {gastos:,.2f} €  ·  neto {ingresos + gastos:,.2f} €"
+            f"{len(rows)} movimientos{export_txt}  ·  "
+            f"ingresos {ingresos:,.2f} €  ·  gastos {gastos:,.2f} €  ·  neto {ingresos + gastos:,.2f} €"
         )
 
     def _cell(self, row, col):

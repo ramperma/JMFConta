@@ -77,6 +77,7 @@ class CajaTab(QWidget):
         self._cache_desc: dict[str, str] = {}
         self._cuenta_seleccionada: str | None = None
         self._cuenta_auto: bool = False
+        self._solo_pendientes: bool = True
         self._gemini_worker: _GeminiWorker | None = None
         self._debounce = QTimer()
         self._debounce.setSingleShot(True)
@@ -235,8 +236,24 @@ class CajaTab(QWidget):
         self.saldo_inicial.setFixedWidth(130)
         self.saldo_inicial.valueChanged.connect(self._refill)
 
+        fecha_lbl = QLabel("Fecha por defecto:")
+        fecha_lbl.setStyleSheet(f"color: {COLOR_TEXT_MUTED};")
+        self.fecha_default = QDateEdit()
+        self.fecha_default.setCalendarPopup(True)
+        self.fecha_default.setDate(QDate.currentDate())
+        self.fecha_default.setDisplayFormat("dd/MM/yyyy")
+        self.fecha_default.setFixedWidth(120)
+
+        btn_aplicar_fecha = QPushButton("Aplicar fecha a sin fecha")
+        btn_aplicar_fecha.setToolTip("Pone esta fecha en todas las filas que aún no tienen fecha")
+        btn_aplicar_fecha.clicked.connect(self._aplicar_fecha)
+
         bar.addWidget(saldo_lbl)
         bar.addWidget(self.saldo_inicial)
+        bar.addSpacing(16)
+        bar.addWidget(fecha_lbl)
+        bar.addWidget(self.fecha_default)
+        bar.addWidget(btn_aplicar_fecha)
         bar.addStretch(1)
 
         btn_importar = QPushButton("Importar Excel…")
@@ -251,8 +268,13 @@ class CajaTab(QWidget):
         btn_vaciar.setProperty("danger", "true")
         btn_vaciar.clicked.connect(self._vaciar)
 
+        self._btn_filtro = QPushButton("Ver todos")
+        self._btn_filtro.setToolTip("Mostrar también movimientos ya exportados a SAGE")
+        self._btn_filtro.clicked.connect(self._toggle_filtro)
+
         bar.addWidget(btn_aprender)
         bar.addWidget(btn_importar)
+        bar.addWidget(self._btn_filtro)
         bar.addWidget(btn_vaciar)
 
         # Wrap in a widget so it can be added to QVBoxLayout
@@ -435,6 +457,14 @@ class CajaTab(QWidget):
         self._refill()
         self._limpiar_form()
 
+    def _aplicar_fecha(self):
+        qd = self.fecha_default.date()
+        iso = f"{qd.year():04d}-{qd.month():02d}-{qd.day():02d}"
+        sin_fecha = [r["id"] for r in repository.listar_movimientos_caja(self._conn) if not r["fecha"]]
+        for mov_id in sin_fecha:
+            repository.actualizar_fecha_caja(self._conn, mov_id, iso)
+        self._refill()
+
     def _limpiar_form(self):
         self._denom_edit.clear()
         self._importe_spin.setValue(0.0)
@@ -446,8 +476,13 @@ class CajaTab(QWidget):
     # Tabla
     # ------------------------------------------------------------------
 
+    def _toggle_filtro(self):
+        self._solo_pendientes = not self._solo_pendientes
+        self._btn_filtro.setText("Solo pendientes" if not self._solo_pendientes else "Ver todos")
+        self._refill()
+
     def _refill(self):
-        rows = repository.listar_movimientos_caja(self._conn)
+        rows = repository.listar_movimientos_caja(self._conn, solo_pendientes=self._solo_pendientes)
         self._precarga_desc_cache()
         self.tabla.blockSignals(True)
         self.tabla.setRowCount(len(rows))
@@ -455,6 +490,7 @@ class CajaTab(QWidget):
         sin_fecha = sin_cuenta = 0
 
         for r, row in enumerate(rows):
+            exportado = bool(row["exported_at"])
             saldo += row["importe"]
             if not row["fecha"]:
                 sin_fecha += 1
@@ -485,10 +521,22 @@ class CajaTab(QWidget):
                 color=COLOR_TEXT_MUTED if not row["observaciones"] else None,
             )
 
+            if exportado:
+                _gris = QColor("#9ca3af")
+                for col in range(self.tabla.columnCount()):
+                    item = self.tabla.item(r, col)
+                    if item:
+                        item.setForeground(_gris)
+
         self.tabla.blockSignals(False)
         n = len(rows)
+        n_total = self._conn.execute("SELECT COUNT(*) FROM movimiento_caja").fetchone()[0]
+        n_export = n_total - self._conn.execute(
+            "SELECT COUNT(*) FROM movimiento_caja WHERE exported_at IS NULL"
+        ).fetchone()[0]
+        export_txt = f"  ·  {n_export} exportados" if n_export else ""
         self.lbl_resumen.setText(
-            f"{n} entradas  ·  {sin_fecha} sin fecha  ·  {sin_cuenta} sin cuenta  ·  "
+            f"{n} entradas{export_txt}  ·  {sin_fecha} sin fecha  ·  {sin_cuenta} sin cuenta  ·  "
             f"saldo final: {saldo:,.2f} €"
         )
 

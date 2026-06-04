@@ -170,4 +170,12 @@ class PreAsientosTab(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "Error", str(e))
             return
+
+        n_caja = repository.marcar_exportados_caja(self._conn)
+        n_banco = repository.marcar_exportados_banco(self._conn)
+        self._asientos = []
+        self.btn_exportar.setEnabled(False)
+        self.lbl_info.setText(
+            f"✓ Exportado. {n_caja} mov. caja + {n_banco} mov. banco marcados como generados."
+        )
         QMessageBox.information(self, "Exportado", f"Archivo guardado en:\n{out}")

@@ -110,6 +110,8 @@ def init_db(db_path: str | Path) -> None:
         conn.executescript(SCHEMA)
         _asegurar_columna(conn, "movimiento_caja", "cuenta_auto", "INTEGER NOT NULL DEFAULT 0")
         _asegurar_columna(conn, "movimiento_banco", "cuenta_auto", "INTEGER NOT NULL DEFAULT 0")
+        _asegurar_columna(conn, "movimiento_caja", "exported_at", "TEXT")
+        _asegurar_columna(conn, "movimiento_banco", "exported_at", "TEXT")
         conn.commit()
 
 

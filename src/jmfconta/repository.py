@@ -205,9 +205,10 @@ def vaciar_movimientos_caja(conn: sqlite3.Connection) -> None:
         conn.execute("DELETE FROM movimiento_caja")
 
 
-def listar_movimientos_caja(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+def listar_movimientos_caja(conn: sqlite3.Connection, solo_pendientes: bool = False) -> list[sqlite3.Row]:
+    where = "WHERE exported_at IS NULL" if solo_pendientes else ""
     return conn.execute(
-        "SELECT * FROM movimiento_caja ORDER BY fecha, id"
+        f"SELECT * FROM movimiento_caja {where} ORDER BY fecha, id"
     ).fetchall()
 
 
@@ -293,9 +294,10 @@ def vaciar_movimientos_banco(conn: sqlite3.Connection) -> None:
         conn.execute("DELETE FROM movimiento_banco")
 
 
-def listar_movimientos_banco(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+def listar_movimientos_banco(conn: sqlite3.Connection, solo_pendientes: bool = False) -> list[sqlite3.Row]:
+    where = "WHERE exported_at IS NULL" if solo_pendientes else ""
     return conn.execute(
-        "SELECT * FROM movimiento_banco ORDER BY fecha, id"
+        f"SELECT * FROM movimiento_banco {where} ORDER BY fecha, id"
     ).fetchall()
 
 
@@ -317,8 +319,34 @@ def actualizar_comentario_banco(conn: sqlite3.Connection, mov_id: int, comentari
 
 # ---------- Pre-asientos (generación desde movimientos) ----------
 
+def marcar_exportados_caja(conn: sqlite3.Connection) -> int:
+    """Marca como exportados todos los movimientos de caja listos (con cuenta y fecha)."""
+    from datetime import datetime, timezone
+    ts = datetime.now(timezone.utc).isoformat()
+    cur = conn.execute(
+        "UPDATE movimiento_caja SET exported_at = ? "
+        "WHERE exported_at IS NULL AND cuenta_sugerida IS NOT NULL AND fecha IS NOT NULL",
+        (ts,),
+    )
+    conn.commit()
+    return cur.rowcount
+
+
+def marcar_exportados_banco(conn: sqlite3.Connection) -> int:
+    """Marca como exportados todos los movimientos de banco listos (con cuenta)."""
+    from datetime import datetime, timezone
+    ts = datetime.now(timezone.utc).isoformat()
+    cur = conn.execute(
+        "UPDATE movimiento_banco SET exported_at = ? "
+        "WHERE exported_at IS NULL AND cuenta_sugerida IS NOT NULL",
+        (ts,),
+    )
+    conn.commit()
+    return cur.rowcount
+
+
 def generar_asientos_caja(conn: sqlite3.Connection) -> list[AsientoGenerado]:
-    rows = listar_movimientos_caja(conn)
+    rows = listar_movimientos_caja(conn, solo_pendientes=True)
     asientos: list[AsientoGenerado] = []
     for r in rows:
         if not r["cuenta_sugerida"] or not r["fecha"]:
@@ -337,7 +365,7 @@ def generar_asientos_caja(conn: sqlite3.Connection) -> list[AsientoGenerado]:
 
 
 def generar_asientos_banco(conn: sqlite3.Connection) -> list[AsientoGenerado]:
-    rows = listar_movimientos_banco(conn)
+    rows = listar_movimientos_banco(conn, solo_pendientes=True)
     asientos: list[AsientoGenerado] = []
     for r in rows:
         try:
