@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import sqlite3
+import sys
+from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QProcess
+from PySide6.QtGui import QColor, QTextCursor
 from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
@@ -14,6 +17,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSizePolicy,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -102,6 +106,35 @@ class ConfigTab(QWidget):
         card.layout().addWidget(self._lbl_status)
 
         outer.addWidget(card)
+
+        # Tarjeta Sincronización
+        sync_card = self._card("🔄  Sincronización con repositorio")
+
+        sync_warn = QLabel(
+            "Descarga los últimos cambios del repositorio remoto. "
+            "Si hay conflictos locales, el remoto gana (git reset --hard)."
+        )
+        sync_warn.setStyleSheet(f"color: {COLOR_TEXT_MUTED}; font-size: 9pt; border: none;")
+        sync_warn.setWordWrap(True)
+        sync_card.layout().addWidget(sync_warn)
+
+        self._btn_sync = QPushButton("↓  Sincronizar con remoto")
+        self._btn_sync.setProperty("primary", "true")
+        self._btn_sync.setFixedWidth(220)
+        self._btn_sync.clicked.connect(self._sincronizar)
+        sync_card.layout().addWidget(self._btn_sync)
+
+        self._sync_output = QTextEdit()
+        self._sync_output.setReadOnly(True)
+        self._sync_output.setFixedHeight(200)
+        self._sync_output.setStyleSheet(
+            "QTextEdit { background: #1e1e1e; color: #d4d4d4; "
+            "font-family: 'Consolas', 'Courier New', monospace; "
+            "font-size: 9pt; border-radius: 6px; padding: 8px; }"
+        )
+        sync_card.layout().addWidget(self._sync_output)
+
+        outer.addWidget(sync_card)
         outer.addStretch(1)
 
         # Nota de seguridad
@@ -205,3 +238,58 @@ class ConfigTab(QWidget):
         except Exception as exc:
             self._lbl_status.setStyleSheet(f"color: {COLOR_DANGER}; font-size: 9pt;")
             self._lbl_status.setText(f"✗ Error: {exc}")
+
+    # ------------------------------------------------------------------
+    def _sincronizar(self):
+        resp = QMessageBox.question(
+            self,
+            "Sincronizar",
+            "Se descargarán los cambios del repositorio remoto.\n"
+            "Los cambios locales no confirmados se perderán.\n\n"
+            "¿Continuar?",
+        )
+        if resp != QMessageBox.StandardButton.Yes:
+            return
+
+        self._sync_output.clear()
+        self._btn_sync.setEnabled(False)
+        self._append_terminal("$ git fetch origin && git reset --hard origin/main\n", "#6b7280")
+
+        repo_root = str(Path(__file__).resolve().parent.parent.parent.parent)
+        cmd = "git fetch origin && git reset --hard origin/main"
+
+        self._process = QProcess(self)
+        self._process.setWorkingDirectory(repo_root)
+        self._process.readyReadStandardOutput.connect(self._on_sync_stdout)
+        self._process.readyReadStandardError.connect(self._on_sync_stderr)
+        self._process.finished.connect(self._on_sync_finished)
+
+        if sys.platform == "win32":
+            self._process.start("cmd", ["/c", cmd])
+        else:
+            self._process.start("bash", ["-c", cmd])
+
+    def _append_terminal(self, text: str, color: str = "#d4d4d4"):
+        cursor = self._sync_output.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        fmt = cursor.charFormat()
+        fmt.setForeground(QColor(color))
+        cursor.setCharFormat(fmt)
+        cursor.insertText(text)
+        self._sync_output.setTextCursor(cursor)
+        self._sync_output.ensureCursorVisible()
+
+    def _on_sync_stdout(self):
+        data = self._process.readAllStandardOutput().data().decode("utf-8", errors="replace")
+        self._append_terminal(data, "#4ade80")
+
+    def _on_sync_stderr(self):
+        data = self._process.readAllStandardError().data().decode("utf-8", errors="replace")
+        self._append_terminal(data, "#f59e0b")
+
+    def _on_sync_finished(self, exit_code: int, _exit_status):
+        self._btn_sync.setEnabled(True)
+        if exit_code == 0:
+            self._append_terminal("\n✓ Sincronización completada.\n", "#4ade80")
+        else:
+            self._append_terminal(f"\n✗ Error (código {exit_code}).\n", "#f87171")
