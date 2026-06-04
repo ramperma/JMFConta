@@ -154,7 +154,7 @@ class ConfigTab(QWidget):
             modelos = [
                 m.name.replace("models/", "")
                 for m in client.models.list()
-                if "generateContent" in (getattr(m, "supported_generation_methods", None) or [])
+                if "generateContent" in (getattr(m, "supported_actions", None) or getattr(m, "supported_generation_methods", None) or [])
             ]
             modelos.sort()
             self._model_combo.clear()
