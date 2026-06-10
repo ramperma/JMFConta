@@ -116,7 +116,7 @@ class _ImportWorker(QThread):
 # ---------------------------------------------------------------------------
 
 class CajaTab(QWidget):
-    def __init__(self, conn: sqlite3.Connection, parent=None):
+    def __init__(self, conn: sqlite3.Connection, parent=None, *, on_mapping_learned=None):
         super().__init__(parent)
         self._conn = conn
         self._cache_desc: dict[str, str] = {}
@@ -129,6 +129,7 @@ class CajaTab(QWidget):
         self._debounce.setSingleShot(True)
         self._debounce.setInterval(600)
         self._debounce.timeout.connect(self._sugerir_cuenta)
+        self._on_mapping_learned = on_mapping_learned
         self._build()
         self._refill()
 
@@ -801,11 +802,14 @@ class CajaTab(QWidget):
             return
         actualizadas = 0
         for r in rows:
-            if r["denominacion"].upper() == row["denominacion"].upper() and (not r["cuenta_sugerida"] or r.get("cuenta_auto", 0) == 1):
-                repository.actualizar_cuenta_caja(self._conn, r["id"], row["cuenta_sugerida"])
-                repository.confirmar_cuenta_caja(self._conn, r["id"])
-                actualizadas += 1
+            if r["denominacion"].upper() == row["denominacion"].upper():
+                if r["id"] == mov_id or not r["cuenta_sugerida"] or r["cuenta_auto"] == 1:
+                    repository.actualizar_cuenta_caja(self._conn, r["id"], row["cuenta_sugerida"])
+                    repository.confirmar_cuenta_caja(self._conn, r["id"])
+                    actualizadas += 1
         repository.set_mapping(self._conn, "CAJA", row["denominacion"], row["cuenta_sugerida"])
+        if self._on_mapping_learned:
+            self._on_mapping_learned()
         QMessageBox.information(
             self, "Mapping aprendido",
             f"Guardado para '{row['denominacion']}'. Aplicado a {actualizadas} fila(s)."

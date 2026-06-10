@@ -72,12 +72,13 @@ class _ImportWorker(QThread):
 
 
 class BancoTab(QWidget):
-    def __init__(self, conn: sqlite3.Connection, parent=None):
+    def __init__(self, conn: sqlite3.Connection, parent=None, *, on_mapping_learned=None):
         super().__init__(parent)
         self._conn = conn
         self._cache_desc: dict[str, str] = {}
         self._solo_pendientes: bool = True
         self._import_worker: _ImportWorker | None = None
+        self._on_mapping_learned = on_mapping_learned
         self._build()
         self._refill()
 
@@ -379,11 +380,14 @@ class BancoTab(QWidget):
         actualizadas = 0
         for r in rows:
             r_clave = r["mas_datos"] or r["movimiento"]
-            if r_clave.upper() == clave.upper() and (not r["cuenta_sugerida"] or r.get("cuenta_auto", 0) == 1):
-                repository.actualizar_cuenta_banco(self._conn, r["id"], row["cuenta_sugerida"])
-                repository.confirmar_cuenta_banco(self._conn, r["id"])
-                actualizadas += 1
+            if r_clave.upper() == clave.upper():
+                if r["id"] == mov_id or not r["cuenta_sugerida"] or r["cuenta_auto"] == 1:
+                    repository.actualizar_cuenta_banco(self._conn, r["id"], row["cuenta_sugerida"])
+                    repository.confirmar_cuenta_banco(self._conn, r["id"])
+                    actualizadas += 1
         repository.set_mapping(self._conn, "BANCO", clave, row["cuenta_sugerida"])
+        if self._on_mapping_learned:
+            self._on_mapping_learned()
         QMessageBox.information(self, "Mapping aprendido",
                                 f"Aplicado a {actualizadas} fila(s) y guardado.")
         self._refill()
