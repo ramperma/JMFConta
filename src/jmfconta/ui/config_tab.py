@@ -171,8 +171,9 @@ class ConfigTab(QWidget):
         key = config_store.get(self._conn, "gemini_api_key")
         self._key_edit.setText(key)
         self._modelo_guardado = config_store.get(self._conn, "gemini_model")
-        if key:
-            self._cargar_modelos(silencioso=True)
+        if self._modelo_guardado:
+            self._model_combo.addItem(self._modelo_guardado)
+            self._model_combo.setCurrentIndex(0)
 
     def _cargar_modelos(self, silencioso: bool = False):
         key = self._key_edit.text().strip()

@@ -33,7 +33,7 @@ def main() -> int:
     conn = db.connect(db_path)
     config_store.cargar_en_entorno(conn)
     win = MainWindow(conn)
-    win.show()
+    win.showMaximized()
     return app.exec()
 
 
