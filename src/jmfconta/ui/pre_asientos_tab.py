@@ -118,14 +118,14 @@ class PreAsientosTab(QWidget):
         self.tabla_hist.verticalHeader().setVisible(False)
         self.tabla_hist.setAlternatingRowColors(True)
         self.tabla_hist.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.tabla_hist.verticalHeader().setDefaultSectionSize(38)
+        self.tabla_hist.verticalHeader().setDefaultSectionSize(44)
         hh = self.tabla_hist.horizontalHeader()
         hh.setSectionResizeMode(_HIST_COL_FECHA, QHeaderView.ResizeMode.ResizeToContents)
         hh.setSectionResizeMode(_HIST_COL_ARCHIVO, QHeaderView.ResizeMode.Stretch)
         hh.setSectionResizeMode(_HIST_COL_ASIENTOS, QHeaderView.ResizeMode.ResizeToContents)
         hh.setSectionResizeMode(_HIST_COL_LINEAS, QHeaderView.ResizeMode.ResizeToContents)
         hh.setSectionResizeMode(_HIST_COL_ACCION, QHeaderView.ResizeMode.Fixed)
-        self.tabla_hist.setColumnWidth(_HIST_COL_ACCION, 220)
+        self.tabla_hist.setColumnWidth(_HIST_COL_ACCION, 280)
         self.tabla_hist.setVisible(False)
         self.lbl_hist_vacio.setVisible(False)
         self.tabla_hist.setMaximumHeight(300)
@@ -180,26 +180,20 @@ class PreAsientosTab(QWidget):
             al.setContentsMargins(4, 2, 4, 2)
             al.setSpacing(4)
             btn_recu = QPushButton("Recuperar")
-            btn_recu.setStyleSheet("QPushButton { padding: 2px 8px; border-radius: 3px; }")
+            btn_recu.setStyleSheet("QPushButton { padding: 4px 10px; border-radius: 3px; }")
             btn_recu.setToolTip("Cargar los asientos de esta exportación en la tabla")
             btn_recu.clicked.connect(
                 lambda checked, export_id=row["id"]: self._recuperar_exportacion(export_id)
             )
-            al.addWidget(btn_recu)
+            al.addWidget(btn_recu, 1)
             btn_undo = QPushButton("Deshacer")
             btn_undo.setProperty("danger", True)
-            btn_undo.setStyleSheet("QPushButton { padding: 2px 8px; border-radius: 3px; }")
-            if r == 0:
-                btn_undo.setToolTip(
-                    "Revertir esta exportación: los movimientos vuelven a estar pendientes"
-                )
-                btn_undo.clicked.connect(
-                    lambda checked, export_id=row["id"]: self._deshacer_exportacion(export_id)
-                )
-            else:
-                btn_undo.setEnabled(False)
-                btn_undo.setToolTip("Solo se puede deshacer la exportación más reciente")
-            al.addWidget(btn_undo)
+            btn_undo.setStyleSheet("QPushButton { padding: 4px 10px; border-radius: 3px; }")
+            btn_undo.setToolTip("Revertir esta exportación: los movimientos vuelven a estar pendientes")
+            btn_undo.clicked.connect(
+                lambda checked, export_id=row["id"]: self._deshacer_exportacion(export_id)
+            )
+            al.addWidget(btn_undo, 1)
             self.tabla_hist.setCellWidget(r, _HIST_COL_ACCION, acciones)
 
     def _cell_hist(self, row: int, col: int) -> QTableWidgetItem:
