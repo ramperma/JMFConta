@@ -97,6 +97,7 @@ class BancoTab(QWidget):
         self.btn_asignar = QPushButton("Asignar cuenta…")
         self.btn_asignar.clicked.connect(self._asignar_cuenta)
         self.btn_aprender = QPushButton("Aprender mapping")
+        self.btn_aprender.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.btn_aprender.clicked.connect(self._aprender)
         self.btn_filtro = QPushButton("Ver todos")
         self.btn_filtro.setToolTip("Mostrar también movimientos ya exportados a SAGE")

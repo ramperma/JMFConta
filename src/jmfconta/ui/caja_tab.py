@@ -296,6 +296,7 @@ class CajaTab(QWidget):
         btn_importar.setToolTip("Importar movimientos desde Excel (secundario)")
 
         btn_aprender = QPushButton("Aprender mapping")
+        btn_aprender.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         btn_aprender.clicked.connect(self._aprender)
         btn_aprender.setToolTip("Guardar cuenta de la fila seleccionada para futuras ocurrencias")
 
