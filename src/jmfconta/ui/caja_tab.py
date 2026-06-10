@@ -800,7 +800,7 @@ class CajaTab(QWidget):
             return
         actualizadas = 0
         for r in rows:
-            if r["denominacion"].upper() == row["denominacion"].upper() and not r["cuenta_sugerida"]:
+            if r["denominacion"].upper() == row["denominacion"].upper() and (not r["cuenta_sugerida"] or r.get("cuenta_auto", 0) == 1):
                 repository.actualizar_cuenta_caja(self._conn, r["id"], row["cuenta_sugerida"])
                 repository.confirmar_cuenta_caja(self._conn, r["id"])
                 actualizadas += 1

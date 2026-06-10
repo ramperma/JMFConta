@@ -378,7 +378,7 @@ class BancoTab(QWidget):
         actualizadas = 0
         for r in rows:
             r_clave = r["mas_datos"] or r["movimiento"]
-            if r_clave.upper() == clave.upper() and not r["cuenta_sugerida"]:
+            if r_clave.upper() == clave.upper() and (not r["cuenta_sugerida"] or r.get("cuenta_auto", 0) == 1):
                 repository.actualizar_cuenta_banco(self._conn, r["id"], row["cuenta_sugerida"])
                 repository.confirmar_cuenta_banco(self._conn, r["id"])
                 actualizadas += 1
