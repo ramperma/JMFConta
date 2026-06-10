@@ -143,6 +143,7 @@ QTableWidget, QTableView {{
     selection-background-color: {COLOR_SELECTION};
     selection-color: {COLOR_SELECTION_TEXT};
     font-size: 11pt;
+    outline: 0;
 }}
 QHeaderView::section {{
     background: #eef0f4;
@@ -219,6 +220,59 @@ QScrollBar::handle:horizontal {{
     background: {COLOR_BORDER_STRONG};
     border-radius: 5px;
     min-width: 24px;
+}}
+
+/* Tooltips */
+QToolTip {{
+    background: #1f2937;
+    color: #f9fafb;
+    border: 1px solid #374151;
+    border-radius: 5px;
+    padding: 5px 9px;
+    font-size: 9pt;
+}}
+
+/* Tarjeta resumen (Pre-Asientos) */
+QFrame#resumenFrame {{
+    background: {COLOR_BG_ALT};
+    border: 1px solid {COLOR_BORDER};
+    border-radius: 8px;
+}}
+
+/* Chips de resumen */
+QLabel[chip="blue"] {{
+    background: #eef2ff;
+    color: #1e40af;
+    border: 1px solid #c7d2fe;
+    border-radius: 13px;
+    padding: 5px 16px;
+    font-weight: 600;
+    font-size: 10pt;
+}}
+QLabel[chip="gray"] {{
+    background: #f3f4f6;
+    color: #374151;
+    border: 1px solid #e5e7eb;
+    border-radius: 13px;
+    padding: 5px 16px;
+    font-weight: 600;
+    font-size: 10pt;
+}}
+QLabel[chip="green"] {{
+    background: #ecfdf5;
+    color: #065f46;
+    border: 1px solid #a7f3d0;
+    border-radius: 13px;
+    padding: 5px 16px;
+    font-weight: 700;
+    font-size: 11pt;
+}}
+
+/* Campo de filtro rapido en tablas */
+QLineEdit[search="true"] {{
+    border-radius: 14px;
+    padding: 5px 12px;
+    background: {COLOR_BG_ALT};
 }}
 
 /* Labels auxiliares */

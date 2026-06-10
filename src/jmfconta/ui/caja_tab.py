@@ -4,14 +4,25 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime
 
-from PySide6.QtCore import QDate, QEvent, Qt, QThread, QTimer, Signal
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtCore import (
+    QDate,
+    QEasingCurve,
+    QElapsedTimer,
+    QEvent,
+    QPropertyAnimation,
+    Qt,
+    QThread,
+    QTimer,
+    Signal,
+)
+from PySide6.QtGui import QColor, QFont, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QCompleter,
     QDateEdit,
     QDoubleSpinBox,
     QFileDialog,
     QFrame,
+    QGraphicsOpacityEffect,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -24,6 +35,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from pathlib import Path
 
 from .. import repository
 from ..importers.caja import importar_libro_caja
@@ -66,6 +79,38 @@ class _GeminiWorker(QThread):
             self.resultado.emit(self._denom, "")
 
 
+class _ImportWorker(QThread):
+    progreso = Signal(str)
+    terminado = Signal(int, str, str, str, int)
+
+    def __init__(self, db_path: str, path: str):
+        super().__init__()
+        self._db_path = db_path
+        self._path = path
+
+    def run(self):
+        from .. import db as db_mod
+        conn = db_mod.connect(self._db_path)
+        timer = QElapsedTimer()
+        timer.start()
+        try:
+            self.progreso.emit("Leyendo hoja de cálculo…")
+            lineas = importar_libro_caja(self._path)
+        except Exception as e:
+            conn.close()
+            self.terminado.emit(0, self._path, str(e), "", timer.elapsed())
+            return
+        if not lineas:
+            conn.close()
+            self.terminado.emit(0, self._path, "", "No se detectaron líneas.", timer.elapsed())
+            return
+        self.progreso.emit(f"Importando {len(lineas)} apuntes y consultando IA…")
+        n = repository.insertar_movimientos_caja(conn, lineas)
+        repository.registrar_importacion(conn, "CAJA", Path(self._path).name, n)
+        conn.close()
+        self.terminado.emit(n, self._path, "", "", timer.elapsed())
+
+
 # ---------------------------------------------------------------------------
 # Pestaña principal
 # ---------------------------------------------------------------------------
@@ -79,6 +124,7 @@ class CajaTab(QWidget):
         self._cuenta_auto: bool = False
         self._solo_pendientes: bool = True
         self._gemini_worker: _GeminiWorker | None = None
+        self._import_worker: _ImportWorker | None = None
         self._debounce = QTimer()
         self._debounce.setSingleShot(True)
         self._debounce.setInterval(600)
@@ -101,6 +147,23 @@ class CajaTab(QWidget):
 
         layout.addWidget(self._build_entry_card())
         layout.addWidget(self._build_controls_bar())
+        self._lbl_cargando = QLabel("IMPORTANDO LOS APUNTES DE LA HOJA DE CÁLCULO…")
+        self._lbl_cargando.setStyleSheet(
+            f"color: {COLOR_SUCCESS}; font-weight: bold; font-size: 20pt;"
+        )
+        self._lbl_cargando.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._lbl_cargando.setVisible(False)
+        self._lbl_opacity = QGraphicsOpacityEffect()
+        self._lbl_opacity.setOpacity(1.0)
+        self._lbl_cargando.setGraphicsEffect(self._lbl_opacity)
+        self._pulse_anim = QPropertyAnimation(self._lbl_opacity, b"opacity", self)
+        self._pulse_anim.setDuration(900)
+        self._pulse_anim.setStartValue(1.0)
+        self._pulse_anim.setKeyValueAt(0.5, 0.35)
+        self._pulse_anim.setEndValue(1.0)
+        self._pulse_anim.setEasingCurve(QEasingCurve.Type.InOutSine)
+        self._pulse_anim.setLoopCount(-1)
+        layout.addWidget(self._lbl_cargando)
         layout.addWidget(self._build_tabla(), 1)
         layout.addWidget(self._build_footer())
 
@@ -227,6 +290,36 @@ class CajaTab(QWidget):
         bar = QHBoxLayout()
         bar.setSpacing(8)
 
+        btn_importar = QPushButton("Importar Excel…")
+        btn_importar.setProperty("primary", True)
+        btn_importar.clicked.connect(self._importar)
+        btn_importar.setToolTip("Importar movimientos desde Excel (secundario)")
+
+        btn_aprender = QPushButton("Aprender mapping")
+        btn_aprender.clicked.connect(self._aprender)
+        btn_aprender.setToolTip("Guardar cuenta de la fila seleccionada para futuras ocurrencias")
+
+        self._btn_filtro = QPushButton("Ver todos")
+        self._btn_filtro.setToolTip("Mostrar también movimientos ya exportados a SAGE")
+        self._btn_filtro.clicked.connect(self._toggle_filtro)
+
+        btn_eliminar = QPushButton("Eliminar fila(s)")
+        btn_eliminar.setProperty("danger", "true")
+        btn_eliminar.setToolTip("Borrar las filas seleccionadas (también con tecla Supr)")
+        btn_eliminar.clicked.connect(self._eliminar_seleccion)
+
+        btn_vaciar = QPushButton("Vaciar tabla")
+        btn_vaciar.setProperty("danger", "true")
+        btn_vaciar.clicked.connect(self._vaciar)
+
+        self._search_edit = QLineEdit()
+        self._search_edit.setProperty("search", "true")
+        self._search_edit.setPlaceholderText("🔍 Filtrar…")
+        self._search_edit.setClearButtonEnabled(True)
+        self._search_edit.setFixedWidth(200)
+        self._search_edit.setToolTip("Filtra por denominación, cuenta, comentario u observaciones")
+        self._search_edit.textChanged.connect(self._aplicar_filtro_texto)
+
         saldo_lbl = QLabel("Saldo inicial:")
         saldo_lbl.setStyleSheet(f"color: {COLOR_TEXT_MUTED};")
         self.saldo_inicial = QDoubleSpinBox()
@@ -248,6 +341,14 @@ class CajaTab(QWidget):
         btn_aplicar_fecha.setToolTip("Pone esta fecha en todas las filas que aún no tienen fecha")
         btn_aplicar_fecha.clicked.connect(self._aplicar_fecha)
 
+        bar.addWidget(btn_importar)
+        bar.addWidget(btn_aprender)
+        bar.addWidget(self._btn_filtro)
+        bar.addWidget(btn_eliminar)
+        bar.addWidget(btn_vaciar)
+        bar.addSpacing(12)
+        bar.addWidget(self._search_edit)
+        bar.addSpacing(16)
         bar.addWidget(saldo_lbl)
         bar.addWidget(self.saldo_inicial)
         bar.addSpacing(16)
@@ -255,27 +356,6 @@ class CajaTab(QWidget):
         bar.addWidget(self.fecha_default)
         bar.addWidget(btn_aplicar_fecha)
         bar.addStretch(1)
-
-        btn_importar = QPushButton("Importar Excel…")
-        btn_importar.clicked.connect(self._importar)
-        btn_importar.setToolTip("Importar movimientos desde Excel (secundario)")
-
-        btn_aprender = QPushButton("Aprender mapping")
-        btn_aprender.clicked.connect(self._aprender)
-        btn_aprender.setToolTip("Guardar cuenta de la fila seleccionada para futuras ocurrencias")
-
-        btn_vaciar = QPushButton("Vaciar tabla")
-        btn_vaciar.setProperty("danger", "true")
-        btn_vaciar.clicked.connect(self._vaciar)
-
-        self._btn_filtro = QPushButton("Ver todos")
-        self._btn_filtro.setToolTip("Mostrar también movimientos ya exportados a SAGE")
-        self._btn_filtro.clicked.connect(self._toggle_filtro)
-
-        bar.addWidget(btn_aprender)
-        bar.addWidget(btn_importar)
-        bar.addWidget(self._btn_filtro)
-        bar.addWidget(btn_vaciar)
 
         # Wrap in a widget so it can be added to QVBoxLayout
         w = QWidget()
@@ -301,6 +381,9 @@ class CajaTab(QWidget):
         h.setSectionResizeMode(COL_OBS, QHeaderView.ResizeMode.ResizeToContents)
         self.tabla.itemChanged.connect(self._on_item_changed)
         self.tabla.cellDoubleClicked.connect(self._on_double_click)
+        atajo_supr = QShortcut(QKeySequence(Qt.Key.Key_Delete), self.tabla)
+        atajo_supr.setContext(Qt.ShortcutContext.WidgetShortcut)
+        atajo_supr.activated.connect(self._eliminar_seleccion)
         return self.tabla
 
     def _build_footer(self) -> QLabel:
@@ -481,6 +564,19 @@ class CajaTab(QWidget):
         self._btn_filtro.setText("Solo pendientes" if not self._solo_pendientes else "Ver todos")
         self._refill()
 
+    def _aplicar_filtro_texto(self):
+        texto = self._search_edit.text().strip().upper()
+        cols = (COL_DENOM, COL_CUENTA, COL_COMENT, COL_OBS)
+        for r in range(self.tabla.rowCount()):
+            if not texto:
+                self.tabla.setRowHidden(r, False)
+                continue
+            visible = any(
+                texto in (self.tabla.item(r, c).text().upper() if self.tabla.item(r, c) else "")
+                for c in cols
+            )
+            self.tabla.setRowHidden(r, not visible)
+
     def _refill(self):
         rows = repository.listar_movimientos_caja(self._conn, solo_pendientes=self._solo_pendientes)
         self._precarga_desc_cache()
@@ -503,6 +599,7 @@ class CajaTab(QWidget):
             if not fecha_v:
                 it.setForeground(QColor(COLOR_DANGER))
             it.setData(Qt.ItemDataRole.UserRole, row["id"])
+            it.setData(Qt.ItemDataRole.UserRole + 1, exportado)
             self.tabla.setItem(r, COL_FECHA, it)
 
             set_text(self._cell(r, COL_DENOM), row["denominacion"])
@@ -539,6 +636,7 @@ class CajaTab(QWidget):
             f"{n} entradas{export_txt}  ·  {sin_fecha} sin fecha  ·  {sin_cuenta} sin cuenta  ·  "
             f"saldo final: {saldo:,.2f} €"
         )
+        self._aplicar_filtro_texto()
 
     def _cell(self, row: int, col: int) -> QTableWidgetItem:
         item = self.tabla.item(row, col)
@@ -548,13 +646,7 @@ class CajaTab(QWidget):
         return item
 
     def _precarga_desc_cache(self):
-        for r in repository.listar_movimientos_caja(self._conn):
-            c = r["cuenta_sugerida"]
-            if c and c not in self._cache_desc:
-                row = self._conn.execute(
-                    "SELECT descripcion FROM cuenta WHERE codigo=?", (c,)
-                ).fetchone()
-                self._cache_desc[c] = row[0] if row else ""
+        self._cache_desc.update(repository.descripciones_cuentas(self._conn))
 
     # ------------------------------------------------------------------
     # Edición en tabla
@@ -631,18 +723,40 @@ class CajaTab(QWidget):
         path, _ = QFileDialog.getOpenFileName(self, "Importar libro de caja", "", "Excel (*.xlsx)")
         if not path:
             return
-        try:
-            lineas = importar_libro_caja(path)
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"No se pudo leer:\n{e}")
-            return
-        if not lineas:
-            QMessageBox.warning(self, "Aviso", "No se detectaron líneas.")
-            return
-        n = repository.insertar_movimientos_caja(self._conn, lineas)
-        self._actualizar_completer()
-        QMessageBox.information(self, "Importado", f"{n} líneas importadas.")
-        self._refill()
+        self._lbl_cargando.setText("IMPORTANDO LOS APUNTES DE LA HOJA DE CÁLCULO…")
+        self._lbl_cargando.setVisible(True)
+        self._pulse_anim.start()
+        db_path = self._conn.execute("PRAGMA database_list").fetchone()[2]
+        self._import_worker = _ImportWorker(db_path, path)
+        self._import_worker.progreso.connect(self._on_import_progreso)
+        self._import_worker.terminado.connect(self._on_import_terminado)
+        self._import_worker.start()
+
+    def _on_import_progreso(self, msg: str):
+        self._lbl_cargando.setText(msg)
+
+    def _on_import_terminado(self, n: int, path: str, error: str, warning: str, elapsed: int):
+        self._finish_importar(n, path, error=error, warning=warning, elapsed=elapsed)
+
+    def _finish_importar(self, n: int, path: str, *, error: str = "", warning: str = "", elapsed: int = 0):
+        MIN_MS = 1500
+        remaining = max(0, MIN_MS - elapsed)
+        def _done():
+            self._pulse_anim.stop()
+            self._lbl_opacity.setOpacity(1.0)
+            self._lbl_cargando.setVisible(False)
+            if error:
+                QMessageBox.critical(self, "Error", f"No se pudo leer:\n{error}")
+            elif warning:
+                QMessageBox.warning(self, "Aviso", warning)
+            else:
+                QMessageBox.information(self, "Importado", f"{n} líneas importadas.")
+            self._actualizar_completer()
+            self._refill()
+        if remaining > 0:
+            QTimer.singleShot(remaining, _done)
+        else:
+            _done()
 
     def _vaciar(self):
         if QMessageBox.question(
@@ -650,6 +764,28 @@ class CajaTab(QWidget):
         ) != QMessageBox.StandardButton.Yes:
             return
         repository.vaciar_movimientos_caja(self._conn)
+        self._refill()
+
+    def _eliminar_seleccion(self):
+        filas = sorted({i.row() for i in self.tabla.selectedItems()})
+        ids = []
+        exportados = 0
+        for r in filas:
+            it = self.tabla.item(r, COL_FECHA)
+            if not it:
+                continue
+            ids.append(int(it.data(Qt.ItemDataRole.UserRole)))
+            if it.data(Qt.ItemDataRole.UserRole + 1):
+                exportados += 1
+        if not ids:
+            QMessageBox.information(self, "Aviso", "Selecciona una o más filas en la tabla.")
+            return
+        msg = f"¿Borrar {len(ids)} movimiento(s) de caja?"
+        if exportados:
+            msg += f"\n\nAtención: {exportados} ya fueron exportados a SAGE."
+        if QMessageBox.question(self, "Eliminar", msg) != QMessageBox.StandardButton.Yes:
+            return
+        repository.eliminar_movimientos_caja(self._conn, ids)
         self._refill()
 
     def _aprender(self):

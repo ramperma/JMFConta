@@ -97,6 +97,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(MappingsTab(self._conn), "🔗  Mappings")
         self.tabs.addTab(PreAsientosTab(self._conn), "📤  Pre-Asientos SAGE")
         self.tabs.addTab(ConfigTab(self._conn), "⚙️  Configuración")
+        self.tabs.currentChanged.connect(self._actualizar_footer)
 
         # Footer
         footer = QFrame()
@@ -118,6 +119,24 @@ class MainWindow(QMainWindow):
         root_layout.addWidget(footer)
 
         self.setCentralWidget(root)
+        self._actualizar_footer()
+
+    def _actualizar_footer(self, *_):
+        try:
+            pend_caja = self._conn.execute(
+                "SELECT COUNT(*) FROM movimiento_caja WHERE exported_at IS NULL"
+            ).fetchone()[0]
+            pend_banco = self._conn.execute(
+                "SELECT COUNT(*) FROM movimiento_banco WHERE exported_at IS NULL"
+            ).fetchone()[0]
+        except sqlite3.Error:
+            return
+        if pend_caja or pend_banco:
+            self.lbl_periodo.setText(
+                f"Pendientes de exportar: {pend_caja} caja · {pend_banco} banco"
+            )
+        else:
+            self.lbl_periodo.setText("Sin movimientos pendientes de exportar")
 
     def closeEvent(self, event):
         resp = QMessageBox.question(

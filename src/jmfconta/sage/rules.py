@@ -42,6 +42,8 @@ class AsientoGenerado:
     periodo: int
     descripcion: str
     lineas: tuple[LineaAsiento, ...]
+    fuente_id: int | None = None
+    fuente_tipo: str | None = None
 
 
 def periodo_de(fecha: date) -> int:

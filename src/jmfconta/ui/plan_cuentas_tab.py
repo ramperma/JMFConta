@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sqlite3
+from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
@@ -105,5 +106,6 @@ class PlanCuentasTab(QWidget):
             QMessageBox.warning(self, "Aviso", "El archivo no contiene cuentas.")
             return
         n = repository.cargar_plan(self._conn, cuentas)
+        repository.registrar_importacion(self._conn, "PLAN", Path(path).name, n)
         QMessageBox.information(self, "Plan cargado", f"{n} cuentas importadas.")
         self._refill(self.search.text())

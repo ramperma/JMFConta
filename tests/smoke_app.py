@@ -17,7 +17,7 @@ from jmfconta.importers.plan_cuentas import importar_plan_cuentas  # noqa: E402
 from jmfconta.sage.exporter import exportar_sage  # noqa: E402
 from jmfconta.ui.main_window import MainWindow  # noqa: E402
 
-DOCS = Path("/home/ramon/CodigoGithub/JMFConta/docs")
+DOCS = Path(__file__).resolve().parent.parent / "docs"
 
 
 def run():

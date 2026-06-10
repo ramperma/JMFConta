@@ -84,9 +84,31 @@ CREATE TABLE IF NOT EXISTS config (
     valor TEXT NOT NULL DEFAULT ''
 );
 
+CREATE TABLE IF NOT EXISTS historial_importacion (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    origen TEXT NOT NULL,
+    archivo TEXT NOT NULL,
+    filas INTEGER NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS historial_exportacion (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    archivo TEXT NOT NULL,
+    periodo INTEGER,
+    n_asientos INTEGER NOT NULL,
+    n_lineas INTEGER NOT NULL,
+    n_caja INTEGER NOT NULL,
+    n_banco INTEGER NOT NULL,
+    created_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_movcaja_fecha ON movimiento_caja(fecha);
 CREATE INDEX IF NOT EXISTS idx_movbanco_fecha ON movimiento_banco(fecha);
 CREATE INDEX IF NOT EXISTS idx_asiento_periodo ON asiento(periodo);
+CREATE INDEX IF NOT EXISTS idx_al_fuente ON asiento_linea(fuente_id, fuente_tipo);
+CREATE INDEX IF NOT EXISTS idx_histimp_origen ON historial_importacion(origen);
+CREATE INDEX IF NOT EXISTS idx_histexp_periodo ON historial_exportacion(periodo);
 """
 
 
@@ -112,6 +134,9 @@ def init_db(db_path: str | Path) -> None:
         _asegurar_columna(conn, "movimiento_banco", "cuenta_auto", "INTEGER NOT NULL DEFAULT 0")
         _asegurar_columna(conn, "movimiento_caja", "exported_at", "TEXT")
         _asegurar_columna(conn, "movimiento_banco", "exported_at", "TEXT")
+        _asegurar_columna(conn, "movimiento_caja", "updated_at", "TEXT")
+        _asegurar_columna(conn, "movimiento_banco", "updated_at", "TEXT")
+        _asegurar_columna(conn, "asiento", "exported_at", "TEXT")
         conn.commit()
 
 
